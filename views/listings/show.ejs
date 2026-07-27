@@ -1,0 +1,345 @@
+<% layout("/layouts/boilerplate") %>
+<script type="application/json" id="listing-data"><%- JSON.stringify(listing || {}) %></script>
+<script>
+    const mapToken = "<%= process.env.MAP_TOKEN || '' %>";
+    const listing = JSON.parse(document.getElementById("listing-data").textContent);
+</script>
+
+<div class="row">
+    <div class="col-lg-8 col-md-10 col-sm-12 mx-auto">
+        <div class="mt-3 d-flex justify-content-between align-items-center mb-2">
+            <h3 class="listing-title mb-0"><%= listing.title %></h3>
+            <% if (currUser) { %>
+                <% const isWishlisted = currUser.wishlist && currUser.wishlist.some(id => id.toString() === listing._id.toString()); %>
+                <form action="/wishlist/toggle/<%= listing._id %>" method="POST" class="m-0">
+                    <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3 shadow-sm fw-semibold" title="Save to Wishlist">
+                        <i class="<%= isWishlisted ? 'fa-solid fa-heart text-danger' : 'fa-regular fa-heart' %> me-1"></i>
+                        <%= isWishlisted ? 'Saved' : 'Save' %>
+                    </button>
+                </form>
+            <% } %>
+        </div>
+        <div class="card show-card listing-card">
+            <img src="<%= listing.image ? listing.image.url : '' %>" class="card-img-top show-img" alt="listing-img">
+            <div class="listing-card-body mt-3">
+                <p class="listing-card-text">
+                    <b>Hosted By: </b><i><%= listing.owner ? listing.owner.username : "Anonymous Owner" %></i>
+                </p>
+                <p class="listing-card-text">
+                    <b>Description: </b><%= listing.description %>
+                </p>
+                <p class="listing-card-text">
+                    <b>Cost: </b>&#8377; <%= listing.price ? listing.price.toLocaleString("en-IN") : 0 %>
+                </p>
+                <p class="listing-card-text">
+                    <b>Category: </b><%= listing.category %>
+                </p>
+                <p class="listing-card-text">
+                    <b>Location:&nbsp;&nbsp;</b><i class="fa-solid fa-location-dot">&nbsp;</i><%= listing.location %>
+                </p>
+                <p class="listing-card-text">
+                    <b>Country:&nbsp;&nbsp;</b><i class="fa-solid fa-globe">&nbsp;</i><%= listing.country %>
+                </p>
+            </div>
+        </div>
+
+        <!-- Booking & Reservation Card -->
+        <div class="card shadow-sm border-0 rounded-4 p-4 mt-4 mb-4" id="booking-card" style="background-color: #f8f9fa;">
+            <h4 class="fw-bold mb-3"><i class="fa-solid fa-calendar-days text-danger me-2"></i>Reserve Your Stay</h4>
+            <form action="/listings/<%= listing._id %>/bookings" method="POST" class="needs-validation" novalidate>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label for="checkIn" class="form-label fw-semibold">Check-in Date</label>
+                        <input type="date" class="form-control" id="checkIn" name="booking[checkIn]" required>
+                        <div class="invalid-feedback">Please select a valid check-in date.</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="checkOut" class="form-label fw-semibold">Check-out Date</label>
+                        <input type="date" class="form-control" id="checkOut" name="booking[checkOut]" required>
+                        <div class="invalid-feedback">Please select a valid check-out date.</div>
+                    </div>
+                    <div class="col-12">
+                        <label for="guests" class="form-label fw-semibold">Number of Guests</label>
+                        <input type="number" class="form-control" id="guests" name="booking[guests]" value="1" min="1" max="10" required>
+                    </div>
+                </div>
+
+                <!-- Real-time Cost Breakdown -->
+                <div id="cost-summary" class="bg-white border rounded-3 p-3 mt-3 d-none">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span id="nightly-calc">&#8377; <%= listing.price ? listing.price.toLocaleString("en-IN") : 0 %> &times; <span id="num-nights">0</span> night(s)</span>
+                        <span id="base-total" class="fw-semibold">&#8377; 0</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2 text-muted small">
+                        <span>GST & Service Fee (18%)</span>
+                        <span id="tax-total">&#8377; 0</span>
+                    </div>
+                    <hr class="my-2">
+                    <div class="d-flex justify-content-between fw-bold fs-5 text-dark">
+                        <span>Total Amount</span>
+                        <span id="grand-total" class="text-danger">&#8377; 0</span>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <% if (currUser) { %>
+                        <button type="submit" class="btn btn-danger btn-lg w-100 fw-bold py-2 shadow-sm">
+                            <i class="fa-solid fa-bolt me-2"></i>Confirm Reservation
+                        </button>
+                    <% } else { %>
+                        <a href="/login" class="btn btn-outline-danger btn-lg w-100 fw-bold py-2 shadow-sm">
+                            Log in to Reserve
+                        </a>
+                    <% } %>
+                </div>
+            </form>
+        </div>
+
+        <script>
+            document.addEventListener("DOMContentLoaded", () => {
+                const checkInInput = document.getElementById("checkIn");
+                const checkOutInput = document.getElementById("checkOut");
+                const costSummary = document.getElementById("cost-summary");
+                const numNightsSpan = document.getElementById("num-nights");
+                const baseTotalSpan = document.getElementById("base-total");
+                const taxTotalSpan = document.getElementById("tax-total");
+                const grandTotalSpan = document.getElementById("grand-total");
+                const pricePerNight = <%= listing.price || 0 %>;
+
+                const todayStr = new Date().toISOString().split("T")[0];
+                if (checkInInput) checkInInput.min = todayStr;
+
+                function updatePrice() {
+                    if (!checkInInput.value || !checkOutInput.value) {
+                        costSummary.classList.add("d-none");
+                        return;
+                    }
+
+                    const d1 = new Date(checkInInput.value);
+                    const d2 = new Date(checkOutInput.value);
+
+                    if (d2 <= d1) {
+                        costSummary.classList.add("d-none");
+                        return;
+                    }
+
+                    const diffTime = Math.abs(d2 - d1);
+                    const nights = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    const basePrice = pricePerNight * nights;
+                    const tax = Math.round(basePrice * 0.18);
+                    const grandTotal = basePrice + tax;
+
+                    numNightsSpan.textContent = nights;
+                    baseTotalSpan.innerHTML = "&#8377; " + basePrice.toLocaleString("en-IN");
+                    taxTotalSpan.innerHTML = "&#8377; " + tax.toLocaleString("en-IN");
+                    grandTotalSpan.innerHTML = "&#8377; " + grandTotal.toLocaleString("en-IN");
+                    costSummary.classList.remove("d-none");
+                }
+
+                if (checkInInput && checkOutInput) {
+                    checkInInput.addEventListener("change", () => {
+                        checkOutInput.min = checkInInput.value;
+                        updatePrice();
+                    });
+                    checkOutInput.addEventListener("change", updatePrice);
+                }
+            });
+        </script>
+
+        <% if(currUser && listing.owner && currUser._id.equals(listing.owner._id)){ %>
+            <div class="show-btns d-flex flex-column flex-md-row justify-content-center gap-2 gap-md-3 mt-3">
+                <a href="/listings/<%= listing._id %>/edit" class="btn btn-danger mb-2 mb-md-0">Edit this Listing</a>
+                <form action="/listings/<%= listing._id %>?_method=DELETE" method="POST">
+                    <button type="submit" class="btn btn-dark">Delete this Listing</button>
+                </form>
+            </div>
+        <% } %>
+
+        <% if(currUser){ %>
+            <div class="col-6 offset-3">
+                <hr>
+            </div>
+
+            <div class="mt-3">
+                <h4>Leave a Review</h4>
+                <form class="mt-3 needs-validation" novalidate action="/listings/<%= listing._id %>/reviews" method="POST">
+                    <div class="mt-3">
+                        <label class="form-label" for="rating">Rating</label>
+                        <fieldset class="starability-slot">
+                            <input type="radio" id="no-rate" class="input-no-rate" name="review[rating]" value="1" checked aria-label="No rating." />
+                            <input type="radio" id="first-rate1" name="review[rating]" value="1" />
+                            <label for="first-rate1" title="Terrible">1 star</label>
+                            <input type="radio" id="first-rate2" name="review[rating]" value="2" />
+                            <label for="first-rate2" title="Not good">2 stars</label>
+                            <input type="radio" id="first-rate3" name="review[rating]" value="3" />
+                            <label for="first-rate3" title="Average">3 stars</label>
+                            <input type="radio" id="first-rate4" name="review[rating]" value="4" />
+                            <label for="first-rate4" title="Very good">4 stars</label>
+                            <input type="radio" id="first-rate5" name="review[rating]" value="5" />
+                            <label for="first-rate5" title="Amazing">5 stars</label>
+                        </fieldset>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="comment">Comments</label>
+                        <textarea class="form-control" name="review[comment]" id="comment" cols="30" rows="5" required></textarea>
+                        <div class="invalid-feedback">Please add some comments for review</div>
+                    </div>
+                    <div class="show-btns d-flex flex-column flex-md-row justify-content-center gap-2 gap-md-3">
+                        <button class="btn btn-dark">Submit</button>
+                    </div>
+                </form>
+            </div>
+        <% } %>
+
+        <div class="col-6 offset-3">
+            <hr>
+        </div>
+
+        <% if(listing.reviews && listing.reviews.length > 0){ %>
+            <div class="mt-3">
+                <h4>All Reviews</h4>
+                <div class="row justify-content-left">
+                    <% for (let review of listing.reviews) { %>
+                        <div class="col-12 col-md-6 col-lg-6 d-flex mt-3">
+                            <div class="card mb-1 flex-grow-1">
+                                <div class="card-body d-flex flex-column justify-content-between">
+                                    <div>
+                                        <h5 class="card-title">
+                                            <i class="fa-solid fa-circle-user fa-lg" style="color: #ff0000;">&nbsp;</i>
+                                            <i><%= review.author ? review.author.username : "Anonymous User" %></i>
+                                        </h5>
+                                        <p class="starability-result card-text" data-rating="<%= review.rating %>"></p>
+                                        <p class="card-text review-comment"><%= review.comment %></p>
+                                    </div>
+                                    <% if(currUser && review.author && currUser._id.equals(review.author._id)){ %>
+                                        <form action="/listings/<%= listing._id %>/reviews/<%= review._id %>?_method=DELETE" method="POST">
+                                            <button class="btn btn-sm btn-danger mt-2">Delete</button>
+                                        </form>
+                                    <% } %>
+                                </div>
+                            </div>
+                        </div>
+                    <% } %>
+                </div>
+            </div>
+            <div class="col-6 offset-3">
+                <hr>
+            </div>
+        <% } %>
+
+        <div class="mt-3">
+            <h4>What this place offers</h4>
+            <div class="offers">
+                <i class="ri-restaurant-line"><span> Kitchen</span></i>
+                <i class="ri-car-fill"><span> Parking</span></i>
+                <i class="ri-t-shirt-air-fill"><span> Air conditioning</span></i>
+                <i class="ri-tv-2-line"><span> TV</span></i>
+                <i class="ri-vidicon-line"><span> Security cameras</span></i>
+                <i class="ri-wifi-line"><span> Wifi</span></i>
+            </div>
+            <div class="d-flex justify-content-center mt-2">
+                <button id="offers" type="button" class="btn btn-dark" data-bs-toggle="modal" data-bs-target="#exampleModal">
+                    Show all amenities
+                </button>
+            </div>
+
+            <div class="modal fade" id="exampleModal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h1 class="modal-title fs-5" id="exampleModalLabel">What this place offers</h1>
+                        </div>
+                        <div class="modal-body">
+                            <ul>
+                                <h5>Scenic views</h5>
+                                <li>Lake view</li>
+                                <li>Mountain view</li>
+                                <li>Pool view</li>
+                                <hr />
+                            </ul>
+                            <ul>
+                                <h5>Bathrooms</h5>
+                                <li>Cleaning products</li>
+                                <li>Shampoo</li>
+                                <li>Hot Water</li>
+                                <hr />
+                            </ul>
+                            <ul>
+                                <h5>Bedroom and laundry</h5>
+                                <li>Essentials</li>
+                                <li>Hangers</li>
+                                <li>Bed linen</li>
+                                <hr />
+                            </ul>
+                            <ul>
+                                <h5>Entertainment</h5>
+                                <li>TV with standard cable/satellite</li>
+                                <li>Sound system with Bluetooth and aux</li>
+                                <li>Pool table</li>
+                                <hr />
+                            </ul>
+                            <ul>
+                                <h5>Outdoor</h5>
+                                <li>Patio or balcony</li>
+                                <li>Garden</li>
+                                <li>Hammock</li>
+                                <li>Firepit</li>
+                                <li>BBQ grill</li>
+                                <hr />
+                            </ul>
+                            <ul>
+                                <h5>Kitchen and dining</h5>
+                                <li>Dishes and cutlery</li>
+                                <li>Barbecue utensils</li>
+                                <li>Dining table</li>
+                                <li>Freezer</li>
+                                <hr />
+                            </ul>
+                            <ul>
+                                <h5>Locations Features</h5>
+                                <li>Waterfront</li>
+                                <p>Right next to a body of water</p>
+                                <li>Lake access</li>
+                                <p>Guests can get to a lake using a path or dock</p>
+                                <li>Private entrance</li>
+                                <p>Separate street or building entrance</p>
+                            </ul>
+                            <ul>
+                                <h6>and many more...</h6>
+                            </ul>
+                        </div>
+                        <div class="modal-footer d-flex justify-content-center">
+                            <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Close</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-6 offset-3">
+            <hr>
+        </div>
+
+        <div class="mt-3" id="services">
+            <h4>Add-on services</h4>
+            <p>After booking this home, a trip designer can arrange any of these add-on services.</p>
+            <div class="offers">
+                <i class="ri-flight-takeoff-fill"><span> Airport Transfer</span></i>
+                <i class="ri-goblet-line"><span> Butler</span></i>
+                <i class="ri-luggage-cart-fill"><span> Pre-stocking</span></i>
+                <i class="ri-hand-sanitizer-fill"><span> Cleaning</span></i>
+            </div>
+        </div>
+
+        <div class="col-6 offset-3">
+            <hr>
+        </div>
+
+        <div class="mt-3 mb-3">
+            <h4>Where you'll be</h4>
+            <div id="map"></div>
+        </div>
+    </div>
+</div>
+
+<script src="/js/map.js"></script>

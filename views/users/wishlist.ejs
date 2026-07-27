@@ -1,0 +1,45 @@
+<% layout("/layouts/boilerplate") %>
+
+<div class="container mt-3">
+    <h3 class="mb-4"><i class="fa-solid fa-heart text-danger me-2"></i>My Saved Wishlist</h3>
+
+    <% if (!wishlist || wishlist.length === 0) { %>
+        <div class="card p-5 text-center shadow-sm border-0 rounded-4 my-4">
+            <div class="card-body">
+                <i class="fa-regular fa-heart text-muted fa-4x mb-3"></i>
+                <h4>Your wishlist is empty</h4>
+                <p class="text-muted">Explore stays and tap the heart icon on any listing to save your favorites!</p>
+                <a href="/listings" class="btn btn-danger btn-lg mt-2 fw-bold">Explore Listings</a>
+            </div>
+        </div>
+    <% } else { %>
+        <div class="row row-cols-lg-3 row-cols-md-2 row-cols-sm-1 g-4">
+            <% for (let listing of wishlist) { %>
+                <% if (listing) { %>
+                    <div class="col">
+                        <div class="card listing-card h-100 shadow-sm border-0 rounded-3 overflow-hidden position-relative">
+                            <form action="/wishlist/toggle/<%= listing._id %>" method="POST" class="position-absolute top-0 end-0 m-3 z-3">
+                                <button type="submit" class="btn btn-light rounded-circle shadow-sm p-2 border-0" title="Remove from Wishlist">
+                                    <i class="fa-solid fa-heart text-danger fa-lg"></i>
+                                </button>
+                            </form>
+
+                            <a href="/listings/<%= listing._id %>" class="text-decoration-none text-dark">
+                                <div class="img-container overflow-hidden" style="height: 220px;">
+                                    <img src="<%= listing.image ? listing.image.url : '' %>" class="card-img-top w-100 h-100" style="object-fit: cover;" alt="listing_image">
+                                </div>
+                                <div class="card-body p-3">
+                                    <h5 class="card-title fw-bold text-truncate mb-1"><%= listing.title %></h5>
+                                    <p class="text-muted small mb-2"><i class="fa-solid fa-location-dot me-1"></i><%= listing.location %>, <%= listing.country %></p>
+                                    <p class="card-text fw-bold text-danger mb-0">
+                                        &#8377; <%= listing.price ? listing.price.toLocaleString("en-IN") : 0 %> <span class="text-muted fw-normal small">/ night</span>
+                                    </p>
+                                </div>
+                            </a>
+                        </div>
+                    </div>
+                <% } %>
+            <% } %>
+        </div>
+    <% } %>
+</div>
