@@ -8,12 +8,12 @@
 
 ## 🚀 Table of Contents
 - [✨ Key Features](#-key-features)
-- [🛠️ Tech Stack]
-- [📋 System Architecture & Workflow]
-- [💻 Local Installation & Setup]
-- [🔐 Environment Variables]
-- [📁 Folder Structure]
-- [👤 Author]
+- [🛠️ Tech Stack](#-tech-stack)
+- [📋 System Architecture & Workflow](#-System-Architecture-&-Workflow)
+- [💻 Local Installation & Setup](#-Local-Installation-&-Setup)
+- [🔐 Environment Variables](#-Environment-Variables)
+- [📁 Folder Structure](#-Folder-Structure)
+- [👤 Author](#-Author)
 
 ---
 
